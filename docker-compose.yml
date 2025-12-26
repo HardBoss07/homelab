@@ -1,18 +1,5 @@
 version: "3.8"
 
-# Reusable configuration for services
-x-traefik-default: &traefik-default
-  labels:
-    - "traefik.enable=true"
-    - "traefik.http.routers.${SERVICE_NAME}.entrypoints=websecure"
-    - "traefik.http.routers.${SERVICE_NAME}.tls.certresolver=cloudflare"
-    - "traefik.http.routers.${SERVICE_NAME}.rule=Host(`${SERVICE_NAME}.${DOMAIN}`)"
-
-x-common: &common-config
-  restart: unless-stopped
-  networks:
-    - traefik-network
-
 networks:
   traefik-network:
     external: true
@@ -39,51 +26,51 @@ services:
       - letsencrypt:/letsencrypt
     networks:
       - traefik-network
-    labels:
-      - "traefik.enable=true"
     command:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.network=traefik-network"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.cloudflare.acme.dnschallenge=true"
-      - "--certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare"
-      - "--certificatesresolvers.cloudflare.acme.email=${CLOUDFLARE_EMAIL}"
-      - "--certificatesresolvers.cloudflare.acme.storage=/letsencrypt/acme.json"
 
   # ==================== PORTAINER (Docker Management) ====================
   portainer:
-    <<: *common-config
     image: portainer/portainer-ce:latest
     container_name: portainer
-    environment:
-      SERVICE_NAME: portainer
-      DOMAIN: ${DOMAIN}
+    restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
+    networks:
+      - traefik-network
     labels:
-      <<: *traefik-default
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.entrypoints=websecure"
+      - "traefik.http.routers.portainer.tls.certresolver=cloudflare"
+      - "traefik.http.routers.portainer.rule=Host(`portainer.api.m4tt3o.dev`)"
 
   # ==================== EXAMPLE SERVICE 1 ====================
   whoami:
-    <<: *common-config
     image: traefik/whoami:latest
     container_name: whoami
-    environment:
-      SERVICE_NAME: whoami
-      DOMAIN: ${DOMAIN}
+    restart: unless-stopped
+    networks:
+      - traefik-network
     labels:
-      <<: *traefik-default
+      - "traefik.enable=true"
+      - "traefik.http.routers.whoami.entrypoints=websecure"
+      - "traefik.http.routers.whoami.tls.certresolver=cloudflare"
+      - "traefik.http.routers.whoami.rule=Host(`whoami.api.m4tt3o.dev`)"
 
   # ==================== EXAMPLE SERVICE 2 ====================
   hello:
-    <<: *common-config
     image: nginxdemos/hello:latest
     container_name: nginx-hello
-    environment:
-      SERVICE_NAME: hello
-      DOMAIN: ${DOMAIN}
+    restart: unless-stopped
+    networks:
+      - traefik-network
     labels:
-      <<: *traefik-default
+      - "traefik.enable=true"
+      - "traefik.http.routers.hello.entrypoints=websecure"
+      - "traefik.http.routers.hello.tls.certresolver=cloudflare"
+      - "traefik.http.routers.hello.rule=Host(`hello.api.m4tt3o.dev`)"

@@ -1,15 +1,15 @@
 api:
   dashboard: true
-  debug: false
+  debug: true  # Enable debug for troubleshooting
 
 log:
-  level: INFO
+  level: DEBUG
 
 providers:
   docker:
     endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
-    network: traefik-network
+    network: web
     watch: true
 
 entryPoints:
@@ -20,6 +20,7 @@ entryPoints:
         entryPoint:
           to: websecure
           scheme: https
+          permanent: true
 
   websecure:
     address: ":443"
@@ -31,3 +32,6 @@ certificatesResolvers:
       storage: /letsencrypt/acme.json
       dnsChallenge:
         provider: cloudflare
+        resolvers:
+          - "1.1.1.1:53"
+          - "8.8.8.8:53"

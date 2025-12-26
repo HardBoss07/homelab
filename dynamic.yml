@@ -1,0 +1,30 @@
+# dynamic.yml - Dynamic configuration for Traefik
+http:
+  middlewares:
+    security-headers:
+      headers:
+        browserXssFilter: true
+        contentTypeNosniff: true
+        frameDeny: true
+        sslRedirect: true
+        stsIncludeSubdomains: true
+        stsPreload: true
+        stsSeconds: 31536000
+        customFrameOptionsValue: "SAMEORIGIN"
+        customResponseHeaders:
+          X-Robots-Tag: "none"
+
+    compress:
+      compress: true
+
+    rate-limit:
+      rateLimit:
+        average: 100
+        burst: 50
+
+  routers:
+    # Global middlewares applied to all routers
+    websecure:
+      middlewares:
+        - security-headers
+        - compress

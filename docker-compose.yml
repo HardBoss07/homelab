@@ -1,0 +1,89 @@
+version: "3.8"
+
+# Reusable configuration for services
+x-traefik-default: &traefik-default
+  labels:
+    - "traefik.enable=true"
+    - "traefik.http.routers.${SERVICE_NAME}.entrypoints=websecure"
+    - "traefik.http.routers.${SERVICE_NAME}.tls.certresolver=cloudflare"
+    - "traefik.http.routers.${SERVICE_NAME}.rule=Host(`${SERVICE_NAME}.${DOMAIN}`)"
+
+x-common: &common-config
+  restart: unless-stopped
+  networks:
+    - traefik-network
+
+networks:
+  traefik-network:
+    external: true
+
+volumes:
+  letsencrypt:
+  portainer_data:
+
+services:
+  # ==================== TRAEFIK (Reverse Proxy) ====================
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - CF_API_EMAIL=${CLOUDFLARE_EMAIL}
+      - CF_DNS_API_TOKEN=${CLOUDFLARE_API_KEY}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - letsencrypt:/letsencrypt
+    networks:
+      - traefik-network
+    labels:
+      - "traefik.enable=true"
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=traefik-network"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.cloudflare.acme.dnschallenge=true"
+      - "--certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare"
+      - "--certificatesresolvers.cloudflare.acme.email=${CLOUDFLARE_EMAIL}"
+      - "--certificatesresolvers.cloudflare.acme.storage=/letsencrypt/acme.json"
+
+  # ==================== PORTAINER (Docker Management) ====================
+  portainer:
+    <<: *common-config
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    environment:
+      SERVICE_NAME: portainer
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    labels:
+      <<: *traefik-default
+
+  # ==================== EXAMPLE SERVICE 1 ====================
+  whoami:
+    <<: *common-config
+    image: traefik/whoami:latest
+    container_name: whoami
+    environment:
+      SERVICE_NAME: whoami
+      DOMAIN: ${DOMAIN}
+    labels:
+      <<: *traefik-default
+
+  # ==================== EXAMPLE SERVICE 2 ====================
+  hello:
+    <<: *common-config
+    image: nginxdemos/hello:latest
+    container_name: nginx-hello
+    environment:
+      SERVICE_NAME: hello
+      DOMAIN: ${DOMAIN}
+    labels:
+      <<: *traefik-default

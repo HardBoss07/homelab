@@ -2,35 +2,35 @@ version: "3.8"
 
 networks:
   web:
-    external: false  # Internal network
+    external: false
 
 volumes:
   letsencrypt:
   portainer_data:
 
 services:
-  # ==================== TRAEFIK v3.0 ====================
+  # ==================== TRAEFIK ====================
   traefik:
-    image: traefik:v3.0
+    build: ./traefik
     container_name: traefik
     restart: unless-stopped
     ports:
       - "10080:80"
       - "10443:443"
     environment:
-      - CF_API_EMAIL=${CLOUDFLARE_EMAIL}
+      - CLOUDFLARE_EMAIL=${CLOUDFLARE_EMAIL}
       - CF_DNS_API_TOKEN=${CLOUDFLARE_API_KEY}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./dynamic.yml:/etc/traefik/dynamic.yml:ro
       - letsencrypt:/letsencrypt
     networks:
       - web
-    # No command section - everything in traefik.yml
 
   # ==================== PORTAINER ====================
   portainer:
-    image: portainer/portainer-ce:latest
+    build: ./portainer
     container_name: portainer
     restart: unless-stopped
     volumes:
@@ -45,9 +45,9 @@ services:
       - "traefik.http.routers.portainer.tls.certresolver=cloudflare"
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
 
-  # ==================== WHOAMI (Test Service) ====================
+  # ==================== WHOAMI ====================
   whoami:
-    image: traefik/whoami:latest
+    build: ./whoami
     container_name: whoami
     restart: unless-stopped
     networks:

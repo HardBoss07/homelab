@@ -1,8 +1,8 @@
 version: "3.8"
 
 networks:
-  web:
-    external: false
+  traefik-network:
+    external: true  # This matches the network created by your setup.sh
 
 volumes:
   letsencrypt:
@@ -11,7 +11,7 @@ volumes:
 services:
   # ==================== TRAEFIK ====================
   traefik:
-    build: ./traefik
+    image: traefik:latest
     container_name: traefik
     restart: unless-stopped
     ports:
@@ -20,24 +20,35 @@ services:
     environment:
       - CLOUDFLARE_EMAIL=${CLOUDFLARE_EMAIL}
       - CF_DNS_API_TOKEN=${CLOUDFLARE_API_KEY}
+    command:
+      - "--log.level=DEBUG"
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=traefik-network"
+      - "--providers.file.filename=/etc/traefik/traefik.yml"
+      # These flags allow Docker to swap the variables before Traefik starts
+      - "--certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare"
+      - "--certificatesresolvers.cloudflare.acme.email=${CLOUDFLARE_EMAIL}"
+      - "--certificatesresolvers.cloudflare.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.cloudflare.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik.yml:/etc/traefik/traefik.yml:ro
-      - ./dynamic.yml:/etc/traefik/dynamic.yml:ro
-      - letsencrypt:/letsencrypt
+      - ./letsencrypt:/letsencrypt
     networks:
-      - web
+      - traefik-network
 
   # ==================== PORTAINER ====================
   portainer:
-    build: ./portainer
+    image: portainer/portainer-ce:latest
     container_name: portainer
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
     networks:
-      - web
+      - traefik-network
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.portainer.rule=Host(`portainer.api.m4tt3o.dev`)"
@@ -47,11 +58,11 @@ services:
 
   # ==================== WHOAMI ====================
   whoami:
-    build: ./whoami
+    image: traefik/whoami:latest
     container_name: whoami
     restart: unless-stopped
     networks:
-      - web
+      - traefik-network
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.whoami.rule=Host(`whoami.api.m4tt3o.dev`)"

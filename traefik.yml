@@ -1,16 +1,9 @@
 api:
   dashboard: true
-  debug: true  # Enable debug for troubleshooting
+  debug: true
 
 log:
   level: DEBUG
-
-providers:
-  docker:
-    endpoint: "unix:///var/run/docker.sock"
-    exposedByDefault: false
-    network: web
-    watch: true
 
 entryPoints:
   web:
@@ -24,14 +17,3 @@ entryPoints:
 
   websecure:
     address: ":443"
-
-certificatesResolvers:
-  cloudflare:
-    acme:
-      email: ${CLOUDFLARE_EMAIL}
-      storage: /letsencrypt/acme.json
-      dnsChallenge:
-        provider: cloudflare
-        resolvers:
-          - "1.1.1.1:53"
-          - "8.8.8.8:53"

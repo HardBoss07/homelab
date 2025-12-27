@@ -2,11 +2,7 @@ version: "3.8"
 
 networks:
   traefik-network:
-    external: true  # This matches the network created by your setup.sh
-
-volumes:
-  letsencrypt:
-  portainer_data:
+    external: true
 
 services:
   # ==================== TRAEFIK ====================
@@ -15,29 +11,53 @@ services:
     container_name: traefik
     restart: unless-stopped
     ports:
-      - "10080:80"
-      - "10443:443"
+      - "10080:80"   # HTTP
+      - "10443:443"  # HTTPS
     environment:
       - CLOUDFLARE_EMAIL=${CLOUDFLARE_EMAIL}
       - CF_DNS_API_TOKEN=${CLOUDFLARE_API_KEY}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./letsencrypt:/letsencrypt
+      # Note: No traefik.yml volume anymore!
     command:
+      # --- Global Settings ---
       - "--log.level=DEBUG"
       - "--api.dashboard=true"
+      - "--api.insecure=true"  # (Optional) Allows accessing dashboard on port 8080 if mapped, or via router
+
+      # --- Docker Provider ---
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.network=traefik-network"
-      - "--providers.file.filename=/etc/traefik/traefik.yml"
-      # These flags allow Docker to swap the variables before Traefik starts
-      - "--certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare"
+
+      # --- Entrypoints (Replaces traefik.yml) ---
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+
+      # --- Certificate Resolver (Cloudflare) ---
+      # Docker WILL replace these variables correctly:
       - "--certificatesresolvers.cloudflare.acme.email=${CLOUDFLARE_EMAIL}"
       - "--certificatesresolvers.cloudflare.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare"
       - "--certificatesresolvers.cloudflare.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik.yml:/etc/traefik/traefik.yml:ro
-      - ./letsencrypt:/letsencrypt
     networks:
       - traefik-network
+
+  # ==================== WHOAMI ====================
+  whoami:
+    image: traefik/whoami:latest
+    container_name: whoami
+    restart: unless-stopped
+    networks:
+      - traefik-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.whoami.rule=Host(`whoami.api.m4tt3o.dev`)"
+      - "traefik.http.routers.whoami.entrypoints=websecure"
+      - "traefik.http.routers.whoami.tls.certresolver=cloudflare"
 
   # ==================== PORTAINER ====================
   portainer:
@@ -56,15 +76,6 @@ services:
       - "traefik.http.routers.portainer.tls.certresolver=cloudflare"
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
 
-  # ==================== WHOAMI ====================
-  whoami:
-    image: traefik/whoami:latest
-    container_name: whoami
-    restart: unless-stopped
-    networks:
-      - traefik-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.whoami.rule=Host(`whoami.api.m4tt3o.dev`)"
-      - "traefik.http.routers.whoami.entrypoints=websecure"
-      - "traefik.http.routers.whoami.tls.certresolver=cloudflare"
+volumes:
+  letsencrypt:
+  portainer_data:

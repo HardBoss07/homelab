@@ -76,6 +76,17 @@ services:
       - "traefik.http.routers.portainer.tls.certresolver=cloudflare"
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
 
+  # ==================== CLOUDFLARED ====================
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    environment:
+      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+    command: tunnel --no-autoupdate run
+    networks:
+      - traefik-network
+
 volumes:
   letsencrypt:
   portainer_data:

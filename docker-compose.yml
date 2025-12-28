@@ -9,7 +9,7 @@ services:
   traefik:
     image: traefik:latest
     container_name: traefik
-    restart: unless-stopped
+    restart: always
     ports:
       - "10080:80"   # HTTP
       - "10443:443"  # HTTPS
@@ -50,7 +50,7 @@ services:
   whoami:
     image: traefik/whoami:latest
     container_name: whoami
-    restart: unless-stopped
+    restart: always
     networks:
       - traefik-network
     labels:
@@ -63,7 +63,7 @@ services:
   portainer:
     image: portainer/portainer-ce:latest
     container_name: portainer
-    restart: unless-stopped
+    restart: always
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
@@ -80,12 +80,19 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared
-    restart: unless-stopped
+    restart: always
     environment:
       - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
     command: tunnel --no-autoupdate run
     networks:
       - traefik-network
+    # Healthcheck added to automatically restart if tunnel stops responding
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "list"]
+      interval: 1m
+      retries: 3
+      timeout: 10s
+      start_period: 30s
 
 volumes:
   letsencrypt:

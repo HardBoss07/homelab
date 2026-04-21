@@ -149,3 +149,4 @@ services:
 volumes:
   letsencrypt:
   portainer_data:
+  storable_db_data:

@@ -11,8 +11,8 @@ services:
     container_name: traefik
     restart: always
     ports:
-      - "10080:80"   # HTTP
-      - "10443:443"  # HTTPS
+      - "10080:80" # HTTP
+      - "10443:443" # HTTPS
     environment:
       - CLOUDFLARE_EMAIL=${CLOUDFLARE_EMAIL}
       - CF_DNS_API_TOKEN=${CLOUDFLARE_API_KEY}
@@ -24,7 +24,7 @@ services:
       # --- Global Settings ---
       - "--log.level=DEBUG"
       - "--api.dashboard=true"
-      - "--api.insecure=true"  # (Optional) Allows accessing dashboard on port 8080 if mapped, or via router
+      - "--api.insecure=true" # (Optional) Allows accessing dashboard on port 8080 if mapped, or via router
 
       # --- Docker Provider ---
       - "--providers.docker=true"
@@ -58,6 +58,58 @@ services:
       - "traefik.http.routers.whoami.rule=Host(`whoami.m4tt3o.dev`)" # 'whoami' subdomain
       - "traefik.http.routers.whoami.entrypoints=websecure"
       - "traefik.http.routers.whoami.tls.certresolver=cloudflare"
+
+  # ==================== STORABLE (App + API) ====================
+  storable:
+    image: m4tt3o/storable:latest
+    env_file: .env
+    container_name: storable_app
+    restart: always
+    depends_on:
+      storable_db:
+        condition: service_healthy
+    networks:
+      - traefik-network
+    volumes:
+      - /home/m4tt3o/enterprise-storable/storage:/app/storage
+    environment:
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      # This tells the frontend where to find the backend via the browser
+      - NEXT_PUBLIC_API_URL=https://api-storable.m4tt3o.dev
+    labels:
+      - "traefik.enable=true"
+      # Frontend Router
+      - "traefik.http.routers.storable-fe.rule=Host(`storable.m4tt3o.dev`)"
+      - "traefik.http.routers.storable-fe.entrypoints=websecure"
+      - "traefik.http.routers.storable-fe.tls.certresolver=cloudflare"
+      - "traefik.http.services.storable-fe.loadbalancer.server.port=3000"
+      # Backend Router
+      - "traefik.http.routers.storable-be.rule=Host(`api-storable.m4tt3o.dev`)"
+      - "traefik.http.routers.storable-be.entrypoints=websecure"
+      - "traefik.http.routers.storable-be.tls.certresolver=cloudflare"
+      - "traefik.http.services.storable-be.loadbalancer.server.port=8080"
+
+  # ==================== STORABLE DB ====================
+  storable_db:
+    image: mysql:8.0
+    container_name: storable_db
+    env_file: .env
+    restart: always
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - storable_db_data:/var/lib/mysql
+      - /home/m4tt3o/enterprise-storable/db/schema.sql:/docker-entrypoint-initdb.d/001_schema.sql
+      - /home/m4tt3o/enterprise-storable/db/indexes.sql:/docker-entrypoint-initdb.d/002_indexes.sql
+      - /home/m4tt3o/enterprise-storable/db/base-data.sql:/docker-entrypoint-initdb.d/003_base-data.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+    networks:
+      - traefik-network
 
   # ==================== PORTAINER ====================
   portainer:

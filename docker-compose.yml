@@ -1,5 +1,3 @@
-version: "3.8"
-
 networks:
   traefik-network:
     external: true
@@ -11,34 +9,23 @@ services:
     container_name: traefik
     restart: always
     ports:
-      - "10080:80" # HTTP
-      - "10443:443" # HTTPS
+      - "10080:80"
+      - "10443:443"
     environment:
       - CLOUDFLARE_EMAIL=${CLOUDFLARE_EMAIL}
       - CF_DNS_API_TOKEN=${CLOUDFLARE_API_KEY}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./letsencrypt:/letsencrypt
-      # Note: No traefik.yml volume anymore!
     command:
-      # --- Global Settings ---
       - "--log.level=DEBUG"
       - "--api.dashboard=true"
-      - "--api.insecure=true" # (Optional) Allows accessing dashboard on port 8080 if mapped, or via router
-
-      # --- Docker Provider ---
+      - "--api.insecure=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.network=traefik-network"
-
-      # --- Entrypoints (Replaces traefik.yml) ---
       - "--entrypoints.web.address=:80"
-      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
-      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
       - "--entrypoints.websecure.address=:443"
-
-      # --- Certificate Resolver (Cloudflare) ---
-      # Docker WILL replace these variables correctly:
       - "--certificatesresolvers.cloudflare.acme.email=${CLOUDFLARE_EMAIL}"
       - "--certificatesresolvers.cloudflare.acme.storage=/letsencrypt/acme.json"
       - "--certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare"
@@ -46,18 +33,49 @@ services:
     networks:
       - traefik-network
 
-  # ==================== WHOAMI ====================
-  whoami:
-    image: traefik/whoami:latest
-    container_name: whoami
+  # ==================== NEXTCLOUD ====================
+  nextcloud:
+    image: nextcloud:latest
+    container_name: nextcloud
     restart: always
+    depends_on:
+      - nextcloud_db
     networks:
       - traefik-network
+    volumes:
+      - nextcloud_data:/var/www/html
+    environment:
+      - MYSQL_HOST=nextcloud_db
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_PASSWORD=${NEXTCLOUD_DB_PWD}
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.whoami.rule=Host(`whoami.m4tt3o.dev`)" # 'whoami' subdomain
-      - "traefik.http.routers.whoami.entrypoints=websecure"
-      - "traefik.http.routers.whoami.tls.certresolver=cloudflare"
+      - "traefik.http.routers.nextcloud.rule=Host(`cloud.m4tt3o.dev`)"
+      - "traefik.http.routers.nextcloud.entrypoints=web,websecure"
+      - "traefik.http.routers.nextcloud.tls.certresolver=cloudflare"
+      - "traefik.http.services.nextcloud.loadbalancer.server.port=80"
+      - "traefik.http.middlewares.nextcloud-headers.headers.referrerPolicy=no-referrer"
+      - "traefik.http.middlewares.nextcloud-headers.headers.stsSeconds=15552000"
+      - "traefik.http.middlewares.nextcloud-headers.headers.forceSTSHeader=true"
+      - "traefik.http.middlewares.nextcloud-headers.headers.stsPreload=true"
+      - "traefik.http.routers.nextcloud.middlewares=nextcloud-headers"
+      - "traefik.docker.network=traefik-network"
+
+  nextcloud_db:
+    image: mariadb:10.6
+    container_name: nextcloud_db
+    restart: always
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    networks:
+      - traefik-network
+    volumes:
+      - nextcloud_db_data:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PWD}
+      - MYSQL_PASSWORD=${NEXTCLOUD_DB_PWD}
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
 
   # ==================== STORABLE (App + API) ====================
   storable:
@@ -73,20 +91,23 @@ services:
     volumes:
       - /home/m4tt3o/enterprise-storable/storage:/app/storage
     environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - SERVER_PORT=8080
       - MYSQL_DATABASE=${MYSQL_DATABASE}
       - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
-      # This tells the frontend where to find the backend via the browser
       - NEXT_PUBLIC_API_URL=https://api-storable.m4tt3o.dev
     labels:
       - "traefik.enable=true"
-      # Frontend Router
       - "traefik.http.routers.storable-fe.rule=Host(`storable.m4tt3o.dev`)"
       - "traefik.http.routers.storable-fe.entrypoints=websecure"
       - "traefik.http.routers.storable-fe.tls.certresolver=cloudflare"
+      - "traefik.http.routers.storable-fe.service=storable-fe"
       - "traefik.http.services.storable-fe.loadbalancer.server.port=3000"
-      # Backend Router
       - "traefik.http.routers.storable-be.rule=Host(`api-storable.m4tt3o.dev`)"
       - "traefik.http.routers.storable-be.entrypoints=websecure"
+      - "traefik.http.routers.storable-be.service=storable-be"
       - "traefik.http.routers.storable-be.tls.certresolver=cloudflare"
       - "traefik.http.services.storable-be.loadbalancer.server.port=8080"
 
@@ -123,7 +144,7 @@ services:
       - traefik-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.portainer.rule=Host(`portainer.m4tt3o.dev`)" # 'portainer' subdomain
+      - "traefik.http.routers.portainer.rule=Host(`portainer.m4tt3o.dev`)"
       - "traefik.http.routers.portainer.entrypoints=websecure"
       - "traefik.http.routers.portainer.tls.certresolver=cloudflare"
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
@@ -138,15 +159,11 @@ services:
     command: tunnel --no-autoupdate run
     networks:
       - traefik-network
-    # Healthcheck added to automatically restart if tunnel stops responding
-    healthcheck:
-      test: ["CMD", "cloudflared", "tunnel", "list"]
-      interval: 1m
-      retries: 3
-      timeout: 10s
-      start_period: 30s
 
+# ==================== VOLUMES DEFINITION ====================
 volumes:
   letsencrypt:
   portainer_data:
   storable_db_data:
+  nextcloud_data:
+  nextcloud_db_data:
